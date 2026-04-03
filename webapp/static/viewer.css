@@ -1,0 +1,234 @@
+.viewer-embed {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer-toolbar {
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.viewer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viewer-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+  color: var(--muted-strong);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.viewer-page input {
+  width: 56px;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.viewer-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.viewer-status {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+
+.viewer-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 36px;
+  background:
+    linear-gradient(180deg, rgba(240, 243, 248, 0.96) 0%, rgba(232, 237, 244, 0.96) 100%);
+}
+
+.viewer-canvas-wrap {
+  position: relative;
+  display: inline-block;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 28px 70px rgba(25, 45, 80, 0.16);
+  transform-origin: top center;
+}
+
+.viewer-image {
+  display: block;
+  max-width: none;
+}
+
+.viewer-boxes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.viewer-inputs {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+
+.viewer-inputs.disabled {
+  pointer-events: none;
+}
+
+.viewer-boxes.remove-active {
+  pointer-events: auto;
+}
+
+.viewer-box {
+  position: absolute;
+  border: 2px solid rgba(33, 97, 255, 0.72);
+  background: rgba(33, 97, 255, 0.12);
+}
+
+.viewer-fill-mode .viewer-boxes {
+  opacity: 0.18;
+}
+
+.viewer-fill-mode .viewer-boxes.remove-active {
+  opacity: 1;
+}
+
+.viewer-boxes.remove-active .viewer-box {
+  cursor: pointer;
+  border-color: rgba(217, 45, 32, 0.82);
+  background: rgba(217, 45, 32, 0.16);
+}
+
+.viewer-boxes.remove-active .viewer-box:hover {
+  background: rgba(217, 45, 32, 0.26);
+}
+
+.viewer-input {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(33, 97, 255, 0.36);
+  border-radius: 8px;
+  background: rgba(233, 240, 255, 0.78);
+  color: var(--ink);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.viewer-input:focus {
+  outline: none;
+  border-color: rgba(33, 97, 255, 0.64);
+  box-shadow: 0 0 0 3px rgba(33, 97, 255, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.viewer-input.checkbox {
+  padding: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.viewer-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.viewer-overlay.active {
+  pointer-events: auto;
+  cursor: crosshair;
+  background: rgba(33, 97, 255, 0.08);
+}
+
+.viewer-selection {
+  position: absolute;
+  z-index: 5;
+  border: 2px dashed var(--primary);
+  background: rgba(33, 97, 255, 0.16);
+  pointer-events: none;
+}
+
+.viewer-selection.hidden {
+  display: none;
+}
+
+.viewer-toolbar .ghost-button,
+.viewer-toolbar .primary-button {
+  padding: 11px 16px;
+}
+
+:root[data-theme="dark"] .viewer-toolbar {
+  background: rgba(18, 25, 36, 0.92);
+}
+
+:root[data-theme="dark"] .viewer-stage {
+  background: linear-gradient(180deg, rgba(16, 22, 31, 0.98) 0%, rgba(11, 16, 24, 0.98) 100%);
+}
+
+:root[data-theme="dark"] .viewer-canvas-wrap {
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .viewer-input {
+  background: rgba(16, 32, 63, 0.78);
+}
+
+:root[data-theme="dark"] .viewer-input:focus {
+  background: rgba(23, 35, 56, 0.96);
+}
+
+:root[data-theme="dark"] .viewer-input.checkbox {
+  background: rgba(23, 35, 56, 0.86);
+}
+
+@media (max-width: 900px) {
+  .viewer-toolbar {
+    padding: 18px;
+  }
+
+  .viewer-stage {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .viewer-controls {
+    align-items: stretch;
+  }
+
+  .viewer-page {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .viewer-label {
+    min-width: 100%;
+  }
+}

@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local secrets and env files
+keys/
+.env
+.env.*
+env.sh
+webapp/export DOC_AI_PROJECT_ID=*
+
+# Runtime / generated artifacts
+webapp/data/
+*.log
+
+# Editor files
+.vscode/
+.DS_Store

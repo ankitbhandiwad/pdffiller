@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Preparing PDF</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body class="landing-body">
+    <main class="loading-shell">
+      <section class="card loader-card loading-card">
+        <div class="brand-mark compact" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="eyebrow">Preparing Workspace</div>
+        <h1>Adding fields to your document.</h1>
+        <p class="loading-copy">This usually takes a moment while the PDF is analyzed and turned into an editable form.</p>
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loader-text">Adding form fields to your PDF…</div>
+        <div id="progress-detail" class="progress-detail">Starting…</div>
+        <div class="progress-track">
+          <div id="progress-bar" class="progress-bar determinate"></div>
+        </div>
+        <button id="toggle-logs" class="ghost-button" type="button">
+          Show details
+        </button>
+        <div id="log-panel" class="log-panel hidden" aria-live="polite">
+          <pre id="log-output"></pre>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const fileId = "{{ file_id }}";
+      const progressBar = document.getElementById("progress-bar");
+      const progressDetail = document.getElementById("progress-detail");
+      const toggleLogs = document.getElementById("toggle-logs");
+      const logPanel = document.getElementById("log-panel");
+      const logOutput = document.getElementById("log-output");
+
+      const es = new EventSource(`/progress/${fileId}`);
+
+      es.addEventListener("progress", (event) => {
+        const data = JSON.parse(event.data);
+        const percent = Math.max(0, Math.min(100, data.percent || 0));
+        progressBar.style.width = `${percent}%`;
+
+        if (data.total > 0) {
+          progressDetail.textContent = `Page ${data.current} of ${data.total}`;
+        } else {
+          progressDetail.textContent = `Working… ${percent}%`;
+        }
+      });
+
+      es.addEventListener("log", (event) => {
+        const data = JSON.parse(event.data);
+        if (data.message) {
+          logOutput.textContent += `${data.message}\n`;
+          logOutput.scrollTop = logOutput.scrollHeight;
+        }
+      });
+
+      es.addEventListener("done", () => {
+        es.close();
+        window.location.href = `/fill/${fileId}`;
+      });
+
+      es.addEventListener("error", () => {
+        es.close();
+        progressDetail.textContent = "Something went wrong.";
+      });
+
+      toggleLogs.addEventListener("click", () => {
+        logPanel.classList.toggle("hidden");
+        toggleLogs.textContent = logPanel.classList.contains("hidden")
+          ? "Show details"
+          : "Hide details";
+      });
+    </script>
+  </body>
+</html>

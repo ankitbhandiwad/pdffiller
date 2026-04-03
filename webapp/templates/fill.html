@@ -1,0 +1,1648 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fill PDF</title>
+  <script>
+    (() => {
+      try {
+        const storedTheme = localStorage.getItem("cogniquest-theme");
+        document.documentElement.dataset.theme = storedTheme === "dark" ? "dark" : "light";
+      } catch (error) {
+        document.documentElement.dataset.theme = "light";
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/app.css" />
+  <link rel="stylesheet" href="/static/viewer.css" />
+</head>
+
+<body class="workspace-body">
+  <main class="workspace-shell">
+    <div class="workspace-global-settings">
+      <div class="assistant-settings">
+        <button
+          id="theme-settings-toggle"
+          type="button"
+          class="assistant-settings-toggle workspace-settings-toggle"
+          aria-label="Open settings"
+          aria-expanded="false"
+          aria-controls="theme-settings-panel"
+        >
+          <span class="sr-only">Open settings</span>
+        </button>
+        <div id="theme-settings-panel" class="assistant-settings-panel hidden">
+          <div class="assistant-settings-title">Appearance</div>
+          <div class="theme-switcher" role="group" aria-label="Color theme">
+            <button id="theme-light-btn" type="button" class="theme-option">Light</button>
+            <button id="theme-dark-btn" type="button" class="theme-option">Dark</button>
+          </div>
+          <div class="assistant-settings-divider" aria-hidden="true"></div>
+          <div class="assistant-settings-title">Startup Form</div>
+          <div id="startup-form-status" class="settings-status">
+            {{ startup_form.message }}
+          </div>
+          <label class="settings-file-field">
+            <span class="settings-file-copy">Upload a PDF or JPG to open automatically on launch.</span>
+            <input id="startup-form-input" type="file" accept="application/pdf,image/jpeg" />
+          </label>
+          <div class="settings-action-stack">
+            <button id="startup-upload-btn" type="button" class="settings-debug-button">
+              Save Uploaded Form
+            </button>
+            <button id="startup-current-btn" type="button" class="settings-debug-button">
+              Use Current Form
+            </button>
+            <button id="startup-clear-btn" type="button" class="settings-debug-button settings-danger-button">
+              Clear Startup Form
+            </button>
+          </div>
+          <div class="assistant-settings-divider" aria-hidden="true"></div>
+          <div class="assistant-settings-title">Debug</div>
+          <button id="debug-test-btn" type="button" class="settings-debug-button">
+            Test Voice
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="assistant-pane minimal-assistant-pane">
+      <div class="assistant-phone-shell">
+        <div class="assistant-phone-topbar">
+          <div class="assistant-phone-brand">AI</div>
+          <div class="assistant-phone-actions">
+            {% if qa_available %}
+            <button id="qa-start" type="button" class="assistant-mini-action">Q&amp;A</button>
+            {% endif %}
+            {% if qa_available and transcribe_available %}
+            <button id="convo-start" type="button" class="assistant-mini-action">Talk</button>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="assistant-phone-stage">
+          <div class="assistant-visualizer" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+
+          <div class="assistant-mini-statuses">
+            {% if transcribe_available %}
+            <div id="record-status" class="assistant-mini-status dictation-status">Idle</div>
+            {% else %}
+            <div class="assistant-mini-status dictation-status">
+              Transcription unavailable.
+            </div>
+            {% endif %}
+
+            {% if qa_available %}
+            <div id="qa-status" class="assistant-mini-status qa-status">Idle</div>
+            {% else %}
+            <div class="assistant-mini-status qa-status">
+              LLM unavailable.
+            </div>
+            {% endif %}
+
+            {% if qa_available and transcribe_available %}
+            <div id="convo-status" class="assistant-mini-status convo-status">Idle</div>
+            <div id="convo-progress" class="assistant-mini-status convo-progress hidden"></div>
+            {% elif not qa_available %}
+            <div class="assistant-mini-status convo-status">
+              Conversation mode unavailable.
+            </div>
+            {% else %}
+            <div class="assistant-mini-status convo-status">
+              Conversation mode unavailable.
+            </div>
+            {% endif %}
+          </div>
+
+          {% if qa_available %}
+          <div id="qa-panel" class="phone-qa-panel hidden">
+            <div class="qa-question-label">Current Question</div>
+            <div id="qa-question" class="qa-question"></div>
+            <div class="qa-actions">
+              <button id="qa-prev" type="button" class="assistant-mini-action">Prev</button>
+              <button id="qa-update" type="button" class="assistant-mini-action">Update</button>
+              <button id="qa-next" type="button" class="assistant-mini-action">Next</button>
+              <button id="qa-finish" type="button" class="assistant-mini-action">Done</button>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="assistant-phone-bottom">
+          <label class="assistant-composer">
+            <textarea id="qa-answer" rows="1" placeholder="Start a new chat..."></textarea>
+          </label>
+          {% if transcribe_available %}
+          <button id="record-btn" type="button" class="mic-button" aria-label="Start Dictation" title="Start Dictation"></button>
+          {% else %}
+          <button type="button" class="mic-button mic-button-disabled" aria-label="Microphone unavailable" title="Microphone unavailable" disabled></button>
+          {% endif %}
+        </div>
+
+        <div class="assistant-hidden-controls">
+          <label class="assistant-hidden-toggle">
+            <input id="auto-update-toggle" type="checkbox" checked />
+            <span>Auto-update on Next</span>
+          </label>
+        </div>
+      </div>
+    </aside>
+
+    <section class="document-pane">
+      <div class="panel pdf-panel document-panel">
+        <div id="box-editor" class="viewer-embed">
+          <div class="viewer-toolbar">
+            <div class="viewer-controls">
+              <button id="prev-page" type="button" class="ghost-button">Prev</button>
+              <label class="viewer-page">
+                <span>Page</span>
+                <input id="page-input" type="number" min="1" value="1" />
+                <span id="page-total">/ 1</span>
+              </label>
+              <button id="next-page" type="button" class="ghost-button">Next</button>
+              <button id="zoom-out" type="button" class="ghost-button">-</button>
+              <button id="zoom-in" type="button" class="ghost-button">+</button>
+            </div>
+            <div class="viewer-controls">
+              <button id="download-btn" type="button" class="primary-button" {% if not has_fields %}disabled{% endif %}>
+                Download Filled PDF
+              </button>
+              <button id="add-toggle" type="button" class="ghost-button">
+                Add Textbox
+              </button>
+              <button id="add-checkbox" type="button" class="ghost-button">
+                Add Checkbox
+              </button>
+              <label class="viewer-label">
+                <span>Field Label</span>
+                <input id="field-label" type="text" placeholder="Optional" />
+              </label>
+              <button id="remove-btn" type="button" class="ghost-button">
+                Remove
+              </button>
+            </div>
+            <div id="viewer-status" class="viewer-status">Ready.</div>
+          </div>
+          <div class="viewer-stage" id="viewer-stage">
+            <div class="viewer-canvas-wrap" id="viewer-wrap">
+              <img id="pdf-image" class="viewer-image" alt="PDF page preview" />
+              <div id="viewer-boxes" class="viewer-boxes"></div>
+              <div id="viewer-inputs" class="viewer-inputs"></div>
+              <div id="viewer-overlay" class="viewer-overlay"></div>
+              <div id="viewer-selection" class="viewer-selection hidden"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const fileId = "{{ file_id }}";
+    let fieldSchema = {{ field_schema | tojson }};
+
+    const recordBtn = document.getElementById("record-btn");
+    const recordStatus = document.getElementById("record-status");
+    // const modeValue = document.getElementById("mode-value");
+    const qaStart = document.getElementById("qa-start");
+    const qaStatus = document.getElementById("qa-status");
+    const qaPanel = document.getElementById("qa-panel");
+    const qaQuestion = document.getElementById("qa-question");
+    const qaAnswer = document.getElementById("qa-answer");
+    const qaPrev = document.getElementById("qa-prev");
+    const qaUpdate = document.getElementById("qa-update");
+    const qaNext = document.getElementById("qa-next");
+    const qaFinish = document.getElementById("qa-finish");
+    const autoUpdateToggle = document.getElementById("auto-update-toggle");
+    const visualizerDots = Array.from(document.querySelectorAll(".assistant-visualizer span"));
+    const themeSettingsToggle = document.getElementById("theme-settings-toggle");
+    const themeSettingsPanel = document.getElementById("theme-settings-panel");
+    const themeLightBtn = document.getElementById("theme-light-btn");
+    const themeDarkBtn = document.getElementById("theme-dark-btn");
+    const startupFormStatus = document.getElementById("startup-form-status");
+    const startupFormInput = document.getElementById("startup-form-input");
+    const startupUploadBtn = document.getElementById("startup-upload-btn");
+    const startupCurrentBtn = document.getElementById("startup-current-btn");
+    const startupClearBtn = document.getElementById("startup-clear-btn");
+    const debugTestBtn = document.getElementById("debug-test-btn");
+    let inputs = [];
+
+    const downloadBtn = document.getElementById("download-btn");
+    const THEME_STORAGE_KEY = "cogniquest-theme";
+    let startupFormState = {{ startup_form | tojson }};
+
+    const FRAME_MS = 30;
+    const START_SPEECH_FRAMES = 5;
+    const END_SILENCE_MS = 700;
+    const MAX_UTTERANCE_SEC = 20;
+    const PREROLL_MS = 300;
+    const RMS_THRESHOLD = 0.012;
+
+    const VAD_FILTER = true;
+    const BEAM_SIZE = 1;
+    const CONDITION_ON_PREVIOUS_TEXT = false;
+
+    let capsOn = true;
+    let proseMode = true;
+    // if (modeValue) {
+    //   modeValue.textContent = proseMode ? "Prose" : "Spelling";
+    // }
+
+    let audioContext = null;
+    let sourceNode = null;
+    let processorNode = null;
+    let mediaStream = null;
+    let lastFocused = null;
+    let isRunning = false;
+
+    let qaSessionId = null;
+    let qaQuestions = [];
+    let qaIndex = 0;
+    let qaActive = false;
+    let qaAnswers = [];
+    let qaTargets = [];
+    let autoUpdateOnNext = true;
+
+    let frameBuffer = [];
+    let preroll = [];
+    let utterFrames = [];
+    let inSpeech = false;
+    let loudCount = 0;
+    let silentCount = 0;
+    let queue = [];
+    let isTranscribing = false;
+    let speechVisualizerFrame = null;
+    let speechVisualizerActive = false;
+    let speechVisualizerPulse = 0;
+
+    let checkboxGroups = new Map();
+
+    function syncRecordButton(active) {
+      if (!recordBtn) return;
+      recordBtn.classList.toggle("is-recording", !!active);
+      recordBtn.setAttribute("aria-label", active ? "Stop Dictation" : "Start Dictation");
+      recordBtn.setAttribute("title", active ? "Stop Dictation" : "Start Dictation");
+    }
+
+    function setVisualizerIdle() {
+      visualizerDots.forEach((dot) => {
+        dot.style.transform = "translateY(0) scale(1, 1)";
+        dot.style.opacity = "0.96";
+      });
+    }
+
+    function stepSpeechVisualizer(now) {
+      if (!speechVisualizerActive) return;
+      speechVisualizerPulse *= 0.9;
+      visualizerDots.forEach((dot, index) => {
+        const wave = (Math.sin(now / 170 + index * 0.78) + 1) / 2;
+        const amplitude = Math.min(1, 0.18 + wave * 0.42 + speechVisualizerPulse);
+        const scaleY = 1 + amplitude * 1.55;
+        const scaleX = 1 - amplitude * 0.16;
+        const lift = amplitude * 10;
+        dot.style.transform = `translateY(${-lift}px) scale(${scaleX}, ${scaleY})`;
+        dot.style.opacity = `${Math.min(1, 0.62 + amplitude * 0.42)}`;
+      });
+      speechVisualizerFrame = requestAnimationFrame(stepSpeechVisualizer);
+    }
+
+    function startSpeechVisualizer() {
+      if (!visualizerDots.length) return;
+      if (speechVisualizerFrame !== null) {
+        cancelAnimationFrame(speechVisualizerFrame);
+      }
+      speechVisualizerActive = true;
+      speechVisualizerPulse = 0.28;
+      speechVisualizerFrame = requestAnimationFrame(stepSpeechVisualizer);
+    }
+
+    function bumpSpeechVisualizer(boost = 0.32) {
+      speechVisualizerPulse = Math.min(0.88, speechVisualizerPulse + boost);
+    }
+
+    function stopSpeechVisualizer() {
+      speechVisualizerActive = false;
+      speechVisualizerPulse = 0;
+      if (speechVisualizerFrame !== null) {
+        cancelAnimationFrame(speechVisualizerFrame);
+        speechVisualizerFrame = null;
+      }
+      setVisualizerIdle();
+    }
+
+    function currentTheme() {
+      return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    }
+
+    function closeThemeSettings() {
+      if (!themeSettingsPanel || !themeSettingsToggle) return;
+      themeSettingsPanel.classList.add("hidden");
+      themeSettingsToggle.setAttribute("aria-expanded", "false");
+    }
+
+    function updateThemeButtons() {
+      const theme = currentTheme();
+      if (themeLightBtn) {
+        const isActive = theme === "light";
+        themeLightBtn.classList.toggle("is-active", isActive);
+        themeLightBtn.setAttribute("aria-pressed", isActive ? "true" : "false");
+      }
+      if (themeDarkBtn) {
+        const isActive = theme === "dark";
+        themeDarkBtn.classList.toggle("is-active", isActive);
+        themeDarkBtn.setAttribute("aria-pressed", isActive ? "true" : "false");
+      }
+    }
+
+    function applyTheme(theme) {
+      const normalized = theme === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = normalized;
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, normalized);
+      } catch (error) {
+      }
+      updateThemeButtons();
+    }
+
+    function syncDebugButton(busy, label) {
+      if (!debugTestBtn) return;
+      debugTestBtn.disabled = !!busy;
+      debugTestBtn.textContent = label || (busy ? "Testing..." : "Test Voice");
+    }
+
+    function setStartupStatus(text, isError = false) {
+      if (!startupFormStatus) return;
+      startupFormStatus.textContent = text;
+      startupFormStatus.classList.toggle("is-error", !!isError);
+    }
+
+    function applyStartupState(nextState, fallbackMessage) {
+      startupFormState = nextState || {};
+      const message = (startupFormState && startupFormState.message) || fallbackMessage || "No startup form configured.";
+      setStartupStatus(message, false);
+    }
+
+    function syncStartupButtons(busy = false) {
+      if (startupUploadBtn) startupUploadBtn.disabled = busy;
+      if (startupCurrentBtn) startupCurrentBtn.disabled = busy;
+      if (startupClearBtn) startupClearBtn.disabled = busy;
+      if (startupFormInput) startupFormInput.disabled = busy;
+    }
+
+    async function saveUploadedStartupForm() {
+      if (!startupFormInput || !startupFormInput.files || startupFormInput.files.length === 0) {
+        setStartupStatus("Choose a PDF or JPG first.", true);
+        return;
+      }
+
+      const upload = startupFormInput.files[0];
+      const formData = new FormData();
+      formData.append("pdf", upload);
+
+      syncStartupButtons(true);
+      setStartupStatus("Saving startup form...", false);
+      try {
+        const response = await fetch("/settings/startup-form/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          throw new Error(text || "Unable to save the startup form.");
+        }
+        const payload = text ? JSON.parse(text) : {};
+        applyStartupState(payload.startup_form, payload.message || "Startup form saved.");
+        if (startupFormInput) startupFormInput.value = "";
+        if (payload.redirect_url) {
+          window.location.href = payload.redirect_url;
+          return;
+        }
+      } catch (error) {
+        console.error("Startup form upload failed:", error);
+        setStartupStatus(error.message || "Unable to save the startup form.", true);
+      } finally {
+        syncStartupButtons(false);
+      }
+    }
+
+    async function saveCurrentStartupForm() {
+      syncStartupButtons(true);
+      setStartupStatus("Saving current form as startup...", false);
+      try {
+        const response = await fetch(`/settings/startup-form/current/${fileId}`, {
+          method: "POST",
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          throw new Error(text || "Unable to save the current form.");
+        }
+        const payload = text ? JSON.parse(text) : {};
+        applyStartupState(payload.startup_form, payload.message || "Current form saved as startup form.");
+      } catch (error) {
+        console.error("Current startup save failed:", error);
+        setStartupStatus(error.message || "Unable to save the current form.", true);
+      } finally {
+        syncStartupButtons(false);
+      }
+    }
+
+    async function clearSavedStartupForm() {
+      syncStartupButtons(true);
+      setStartupStatus("Clearing startup form...", false);
+      try {
+        const response = await fetch("/settings/startup-form", {
+          method: "DELETE",
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          throw new Error(text || "Unable to clear the startup form.");
+        }
+        const payload = text ? JSON.parse(text) : {};
+        applyStartupState(payload.startup_form, payload.message || "Startup form cleared.");
+        if (startupFormInput) startupFormInput.value = "";
+      } catch (error) {
+        console.error("Startup clear failed:", error);
+        setStartupStatus(error.message || "Unable to clear the startup form.", true);
+      } finally {
+        syncStartupButtons(false);
+      }
+    }
+
+    async function runDebugVoiceTest() {
+      syncDebugButton(true, "Testing...");
+      closeThemeSettings();
+      try {
+        await speakText("Debug voice test. The assistant visualizer should move while this message is spoken.");
+      } catch (error) {
+        console.error("Debug voice test failed:", error);
+        if (qaStatus && !qaActive) {
+          qaStatus.textContent = "Debug voice test failed.";
+        }
+      } finally {
+        syncDebugButton(false, "Test Voice");
+      }
+    }
+
+    if (themeSettingsToggle && themeSettingsPanel) {
+      themeSettingsToggle.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const willOpen = themeSettingsPanel.classList.contains("hidden");
+        themeSettingsPanel.classList.toggle("hidden", !willOpen);
+        themeSettingsToggle.setAttribute("aria-expanded", willOpen ? "true" : "false");
+      });
+    }
+
+    if (themeLightBtn) {
+      themeLightBtn.addEventListener("click", () => {
+        applyTheme("light");
+        closeThemeSettings();
+      });
+    }
+
+    if (themeDarkBtn) {
+      themeDarkBtn.addEventListener("click", () => {
+        applyTheme("dark");
+        closeThemeSettings();
+      });
+    }
+
+    if (debugTestBtn) {
+      debugTestBtn.addEventListener("click", () => {
+        runDebugVoiceTest();
+      });
+    }
+
+    if (startupUploadBtn) {
+      startupUploadBtn.addEventListener("click", () => {
+        saveUploadedStartupForm();
+      });
+    }
+
+    if (startupCurrentBtn) {
+      startupCurrentBtn.addEventListener("click", () => {
+        saveCurrentStartupForm();
+      });
+    }
+
+    if (startupClearBtn) {
+      startupClearBtn.addEventListener("click", () => {
+        clearSavedStartupForm();
+      });
+    }
+
+    document.addEventListener("click", (event) => {
+      if (!themeSettingsPanel || !themeSettingsToggle) return;
+      if (themeSettingsPanel.classList.contains("hidden")) return;
+      const target = event.target;
+      if (themeSettingsPanel.contains(target) || themeSettingsToggle.contains(target)) return;
+      closeThemeSettings();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeThemeSettings();
+      }
+    });
+
+    updateThemeButtons();
+    setVisualizerIdle();
+    applyStartupState(startupFormState, "No startup form configured.");
+    syncStartupButtons(false);
+    syncDebugButton(false, "Test Voice");
+
+
+    const SYMBOL_COMMANDS = {
+      space: " ",
+      blank: " ",
+      spacebar: " ",
+      period: ".",
+      dot: ".",
+      comma: ",",
+      colon: ":",
+      semicolon: ";",
+      "question mark": "?",
+      "exclamation mark": "!",
+      bang: "!",
+      hyphen: "-",
+      minus: "-",
+      dash: "-",
+      underscore: "_",
+      plus: "+",
+      equals: "=",
+      "equals sign": "=",
+      asterisk: "*",
+      star: "*",
+      slash: "/",
+      "forward slash": "/",
+      backslash: "\\",
+      "back slash": "\\",
+      pipe: "|",
+      "vertical bar": "|",
+      ampersand: "&",
+      "and sign": "&",
+      at: "@",
+      "at sign": "@",
+      "at symbol": "@",
+      hash: "#",
+      "hash sign": "#",
+      pound: "#",
+      "pound sign": "#",
+      dollar: "$",
+      "dollar sign": "$",
+      percent: "%",
+      "percent sign": "%",
+      caret: "^",
+      tilde: "~",
+      backtick: "`",
+      grave: "`",
+      "open parenthesis": "(",
+      "left parenthesis": "(",
+      "close parenthesis": ")",
+      "right parenthesis": ")",
+      "open bracket": "[",
+      "left bracket": "[",
+      "close bracket": "]",
+      "right bracket": "]",
+      "open brace": "{",
+      "left brace": "{",
+      "close brace": "}",
+      "right brace": "}",
+      "single quote": "'",
+      apostrophe: "'",
+      "double quote": "\"",
+      quote: "\"",
+      "less than": "<",
+      "greater than": ">",
+    };
+
+    const NUM_WORDS = {
+      zero: "0",
+      one: "1",
+      two: "2",
+      three: "3",
+      four: "4",
+      five: "5",
+      six: "6",
+      seven: "7",
+      eight: "8",
+      nine: "9",
+    };
+
+    function refreshInputList() {
+      inputs = Array.from(document.querySelectorAll(".viewer-input")).filter(
+        (input) => input.type !== "checkbox"
+      );
+      inputs.forEach((input) => {
+        if (input.dataset.bound === "1") return;
+        input.dataset.bound = "1";
+        input.addEventListener("focus", () => {
+          lastFocused = input;
+        });
+      });
+    }
+
+    function updateFieldUI(payload) {
+      fieldSchema = payload.field_schema || [];
+      buildCheckboxGroups();
+      refreshInputList();
+      if (downloadBtn) {
+        const count = Array.isArray(payload.fields) ? payload.fields.length : 0;
+        downloadBtn.disabled = count === 0;
+      }
+    }
+
+    refreshInputList();
+
+    if (qaAnswer) {
+      qaAnswer.addEventListener("focus", () => {
+        lastFocused = qaAnswer;
+      });
+    }
+
+    function getActiveField() {
+      if (qaActive && qaAnswer) {
+        return qaAnswer;
+      }
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
+        if (el.tagName === "INPUT" && el.type === "checkbox") {
+          return lastFocused || inputs[0] || null;
+        }
+        return el;
+      }
+      return lastFocused || inputs[0] || null;
+    }
+
+    function isCheckboxFieldMeta(field) {
+      if (!field || !field.name) return false;
+      const name = String(field.name).toLowerCase();
+      const label = String(field.label || "").toLowerCase();
+      return (
+        name.startsWith("choicebutton") ||
+        name.includes("checkbox") ||
+        label.includes("checkbox") ||
+        label === "yes" ||
+        label === "no"
+      );
+    }
+
+    function buildCheckboxGroups() {
+      checkboxGroups = new Map();
+      const byPage = new Map();
+      fieldSchema.forEach((field) => {
+        if (!isCheckboxFieldMeta(field)) return;
+        const rect = field.rect;
+        if (!Array.isArray(rect) || rect.length !== 4) return;
+        const page = field.page_index ?? 0;
+        const cx = (Number(rect[0]) + Number(rect[2])) / 2;
+        const cy = (Number(rect[1]) + Number(rect[3])) / 2;
+        if (!byPage.has(page)) byPage.set(page, []);
+        byPage.get(page).push({
+          name: field.name,
+          label: field.label || "",
+          cx,
+          cy,
+        });
+      });
+      byPage.forEach((items) => {
+        const sorted = items.slice().sort((a, b) => b.cy - a.cy);
+        const clusters = [];
+        const tol = 8;
+        sorted.forEach((item) => {
+          const last = clusters[clusters.length - 1];
+          if (!last || Math.abs(last.center - item.cy) > tol) {
+            clusters.push({ center: item.cy, items: [item] });
+          } else {
+            last.items.push(item);
+            last.center =
+              last.items.reduce((sum, it) => sum + it.cy, 0) / last.items.length;
+          }
+        });
+        clusters.forEach((cluster) => {
+          const row = cluster.items.slice().sort((a, b) => a.cx - b.cx);
+          for (let i = 0; i + 1 < row.length; i += 2) {
+            const left = row[i];
+            const right = row[i + 1];
+            let yesName = left.name;
+            let noName = right.name;
+            const leftLabel = String(left.label || "").toLowerCase();
+            const rightLabel = String(right.label || "").toLowerCase();
+            if (leftLabel.includes("no") && rightLabel.includes("yes")) {
+              yesName = right.name;
+              noName = left.name;
+            } else if (leftLabel.includes("yes") && rightLabel.includes("no")) {
+              yesName = left.name;
+              noName = right.name;
+            }
+            const group = { yes: yesName, no: noName };
+            checkboxGroups.set(left.name, group);
+            checkboxGroups.set(right.name, group);
+          }
+        });
+      });
+    }
+
+    function parseYesNo(primary, fallback) {
+      const text = String(primary || fallback || "").toLowerCase();
+      if (!text) return null;
+      if (/\b(yes|yep|yeah|affirmative|true|correct|1)\b/.test(text)) return true;
+      if (/\b(no|nope|negative|false|incorrect|0)\b/.test(text)) return false;
+      if (text.trim().startsWith("y")) return true;
+      if (text.trim().startsWith("n")) return false;
+      return null;
+    }
+
+    function setCheckboxValue(name, checked) {
+      if (!name) return;
+      const el = document.querySelector(`.viewer-input[name="${CSS.escape(name)}"]`);
+      if (!el || el.type !== "checkbox") return;
+      el.checked = checked;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function normCmd(raw) {
+      const s = (raw || "").trim().toLowerCase();
+      return s.replace(/[^a-z0-9\s]+/g, " ").replace(/\s+/g, " ").trim();
+    }
+
+    function stripPunctKeepLettersDigitsSpaces(text) {
+      return (text || "")
+        .replace(/[^A-Za-z0-9\s]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function convertNumberWordsAnywhere(text) {
+      if (!text) return "";
+      let out = text.replace(
+        /\b(zero|one|two|three|four|five|six|seven|eight|nine)\b/gi,
+        (m) => NUM_WORDS[m.toLowerCase()]
+      );
+      const words = Object.keys(NUM_WORDS).sort((a, b) => b.length - a.length);
+      let i = 0;
+      const low = out.toLowerCase();
+      let buf = "";
+      while (i < low.length) {
+        let matched = false;
+        for (const w of words) {
+          if (low.startsWith(w, i)) {
+            buf += NUM_WORDS[w];
+            i += w.length;
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) {
+          buf += out[i];
+          i += 1;
+        }
+      }
+      return buf;
+    }
+
+    function finalAlnumCapsNoSpaces(text, caps) {
+      const upper = (text || "").toUpperCase();
+      if (caps) {
+        return upper.replace(/[^A-Z0-9]+/g, "");
+      }
+      return (text || "").replace(/[^A-Za-z0-9]+/g, "");
+    }
+
+    function appendText(field, text) {
+      if (!field || !text) return;
+      const start = field.selectionStart ?? field.value.length;
+      const end = field.selectionEnd ?? field.value.length;
+      const before = field.value.slice(0, start);
+      const after = field.value.slice(end);
+      field.value = `${before}${text}${after}`;
+      const pos = before.length + text.length;
+      field.setSelectionRange(pos, pos);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function backspace(field, n) {
+      if (!field) return;
+      const value = field.value || "";
+      const start = field.selectionStart ?? value.length;
+      const end = field.selectionEnd ?? value.length;
+      if (end > start) {
+        field.value = value.slice(0, start) + value.slice(end);
+        field.setSelectionRange(start, start);
+      } else {
+        const cut = Math.max(0, start - n);
+        field.value = value.slice(0, cut) + value.slice(start);
+        field.setSelectionRange(cut, cut);
+      }
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function deleteForward(field, n) {
+      if (!field) return;
+      const value = field.value || "";
+      const start = field.selectionStart ?? value.length;
+      const end = field.selectionEnd ?? value.length;
+      if (end > start) {
+        field.value = value.slice(0, start) + value.slice(end);
+        field.setSelectionRange(start, start);
+      } else {
+        const cutEnd = Math.min(value.length, start + n);
+        field.value = value.slice(0, start) + value.slice(cutEnd);
+        field.setSelectionRange(start, start);
+      }
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function clearField(field) {
+      if (!field) return;
+      field.value = "";
+      field.setSelectionRange(0, 0);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function focusMove(field, dir) {
+      const nodes = inputs.filter((n) => !n.disabled);
+      if (!nodes.length) return;
+      let idx = nodes.indexOf(field);
+      if (idx < 0) idx = nodes.indexOf(document.activeElement);
+      if (idx < 0) idx = 0;
+      let next = idx + (dir >= 0 ? 1 : -1);
+      if (next < 0) next = 0;
+      if (next >= nodes.length) next = nodes.length - 1;
+      nodes[next].focus();
+      const L = nodes[next].value?.length ?? 0;
+      nodes[next].setSelectionRange(L, L);
+      lastFocused = nodes[next];
+    }
+
+    function handleText(rawText) {
+      if (!rawText) return;
+
+      // Conversation mode: route to conversation handler
+      if (convoActive && convoState === 'LISTENING') {
+        onConvoUtterance(rawText);
+        return;
+      }
+
+      const phrase = normCmd(rawText);
+      const field = getActiveField();
+
+      if (qaActive) {
+        if (
+          ["next question", "next", "next field", "next box"].includes(phrase)
+        ) {
+          nextQuestion();
+          return;
+        }
+        if (
+          ["previous question", "previous", "prev", "back"].includes(phrase)
+        ) {
+          prevQuestion();
+          return;
+        }
+        if (["erase answer", "erase", "clear answer"].includes(phrase)) {
+          if (qaAnswer) {
+            qaAnswer.value = "";
+            qaAnswers[qaIndex] = "";
+          }
+          return;
+        }
+      }
+
+      if (["next", "tab", "next field", "next box"].includes(phrase)) {
+        focusMove(field, 1);
+        return;
+      }
+      if (
+        ["back", "go back", "previous", "prev", "previous field", "previous box"].includes(phrase)
+      ) {
+        focusMove(field, -1);
+        return;
+      }
+      if (["backspace", "delete last"].includes(phrase)) {
+        backspace(field, 1);
+        return;
+      }
+      if (phrase === "delete") {
+        deleteForward(field, 1);
+        return;
+      }
+      if (["clear", "clear field", "erase", "reset"].includes(phrase)) {
+        clearField(field);
+        return;
+      }
+      if (["capslock", "togglecaps", "caps lock", "toggle caps", "caps"].includes(phrase)) {
+        capsOn = !capsOn;
+        recordStatus.textContent = capsOn ? "Caps on." : "Caps off.";
+        return;
+      }
+      // Mode switching disabled; always keep prose mode.
+      /*
+      if (
+        ["toggle mode", "togglemode", "change mode", "mode change", "changemode", "modechange"].includes(
+          phrase
+        )
+      ) {
+        proseMode = !proseMode;
+        if (modeValue) {
+          modeValue.textContent = proseMode ? "Prose" : "Spelling";
+        }
+        recordStatus.textContent = proseMode ? "Prose mode on." : "Prose mode off.";
+        return;
+      }
+      */
+      if (Object.prototype.hasOwnProperty.call(SYMBOL_COMMANDS, phrase)) {
+        appendText(field, SYMBOL_COMMANDS[phrase]);
+        return;
+      }
+
+      let text = rawText;
+      if (!proseMode) {
+        text = stripPunctKeepLettersDigitsSpaces(text);
+        text = convertNumberWordsAnywhere(text);
+        if (capsOn) {
+          text = text.toUpperCase();
+        }
+        text = finalAlnumCapsNoSpaces(text, capsOn);
+      }
+      if (!text) return;
+      appendText(field, text);
+    }
+
+    function rmsEnergy(frame) {
+      let sum = 0;
+      for (let i = 0; i < frame.length; i++) {
+        sum += frame[i] * frame[i];
+      }
+      return Math.sqrt(sum / frame.length);
+    }
+
+    function concatFrames(frames) {
+      const total = frames.reduce((acc, f) => acc + f.length, 0);
+      const out = new Float32Array(total);
+      let offset = 0;
+      frames.forEach((f) => {
+        out.set(f, offset);
+        offset += f.length;
+      });
+      return out;
+    }
+
+    function resampleTo16k(data, inRate) {
+      if (inRate === 16000) return data;
+      const ratio = inRate / 16000;
+      const outLength = Math.round(data.length / ratio);
+      const out = new Float32Array(outLength);
+      for (let i = 0; i < outLength; i++) {
+        const pos = i * ratio;
+        const idx = Math.floor(pos);
+        const next = Math.min(idx + 1, data.length - 1);
+        const frac = pos - idx;
+        out[i] = data[idx] * (1 - frac) + data[next] * frac;
+      }
+      return out;
+    }
+
+    function floatTo16BitPCM(float32) {
+      const out = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        let s = Math.max(-1, Math.min(1, float32[i]));
+        out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
+      return out;
+    }
+
+    function encodeWav(int16, sampleRate) {
+      const buffer = new ArrayBuffer(44 + int16.length * 2);
+      const view = new DataView(buffer);
+
+      function writeString(offset, string) {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
+        }
+      }
+
+      writeString(0, "RIFF");
+      view.setUint32(4, 36 + int16.length * 2, true);
+      writeString(8, "WAVE");
+      writeString(12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(36, "data");
+      view.setUint32(40, int16.length * 2, true);
+
+      let offset = 44;
+      for (let i = 0; i < int16.length; i++, offset += 2) {
+        view.setInt16(offset, int16[i], true);
+      }
+      return buffer;
+    }
+
+    async function enqueueUtterance(floatFrames, sampleRate) {
+      const audio = concatFrames(floatFrames);
+      if (audio.length < sampleRate * 0.25) return;
+      queue.push({ audio, sampleRate });
+      if (!isTranscribing) {
+        await processQueue();
+      }
+    }
+
+    async function processQueue() {
+      if (!queue.length) return;
+      isTranscribing = true;
+      recordStatus.textContent = "Transcribing…";
+      const { audio, sampleRate } = queue.shift();
+      const resampled = resampleTo16k(audio, sampleRate);
+      const pcm16 = floatTo16BitPCM(resampled);
+      const wavBuffer = encodeWav(pcm16, 16000);
+      const blob = new Blob([wavBuffer], { type: "audio/wav" });
+      const formData = new FormData();
+      formData.append("audio", blob, "audio.wav");
+      formData.append("model_size", "small");
+      formData.append("vad_filter", VAD_FILTER ? "1" : "0");
+      formData.append("beam_size", String(BEAM_SIZE));
+      formData.append(
+        "condition_on_previous_text",
+        CONDITION_ON_PREVIOUS_TEXT ? "1" : "0"
+      );
+
+      try {
+        const res = await fetch("/transcribe", {
+          method: "POST",
+          body: formData,
+        });
+        const text = await res.text();
+        handleText(text);
+        recordStatus.textContent = "Listening…";
+      } catch (err) {
+        recordStatus.textContent = "Transcription failed.";
+      } finally {
+        isTranscribing = false;
+        if (queue.length) {
+          await processQueue();
+        }
+      }
+    }
+
+    function processFrame(frame, sampleRate) {
+      const e = rmsEnergy(frame);
+      const isLoud = e >= RMS_THRESHOLD;
+      const prerollFrames = Math.round(PREROLL_MS / FRAME_MS);
+      const endSilenceFrames = Math.round(END_SILENCE_MS / FRAME_MS);
+      const maxUttFrames = Math.round((MAX_UTTERANCE_SEC * 1000) / FRAME_MS);
+
+      preroll.push(frame);
+      if (preroll.length > prerollFrames) preroll.shift();
+
+      if (!inSpeech) {
+        loudCount = isLoud ? loudCount + 1 : 0;
+        if (loudCount >= START_SPEECH_FRAMES) {
+          inSpeech = true;
+          silentCount = 0;
+          utterFrames = preroll.slice();
+        }
+      } else {
+        utterFrames.push(frame);
+        silentCount = isLoud ? 0 : silentCount + 1;
+
+        if (silentCount >= endSilenceFrames || utterFrames.length >= maxUttFrames) {
+          const frames = utterFrames.slice();
+          utterFrames = [];
+          inSpeech = false;
+          loudCount = 0;
+          silentCount = 0;
+          enqueueUtterance(frames, sampleRate);
+        }
+      }
+    }
+
+    function handleAudioProcess(e) {
+      const input = e.inputBuffer.getChannelData(0);
+      const sampleRate = audioContext.sampleRate;
+      for (let i = 0; i < input.length; i++) {
+        frameBuffer.push(input[i]);
+      }
+      const frameSize = Math.round(sampleRate * (FRAME_MS / 1000));
+      while (frameBuffer.length >= frameSize) {
+        const frame = new Float32Array(frameBuffer.slice(0, frameSize));
+        frameBuffer = frameBuffer.slice(frameSize);
+        processFrame(frame, sampleRate);
+      }
+    }
+
+    async function startDictation() {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContext = new AudioContext();
+      sourceNode = audioContext.createMediaStreamSource(mediaStream);
+      processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+      processorNode.onaudioprocess = handleAudioProcess;
+      sourceNode.connect(processorNode);
+      processorNode.connect(audioContext.destination);
+      recordStatus.textContent = "Listening…";
+      syncRecordButton(true);
+      isRunning = true;
+    }
+
+    async function stopDictation() {
+      if (processorNode) processorNode.disconnect();
+      if (sourceNode) sourceNode.disconnect();
+      if (audioContext) await audioContext.close();
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((t) => t.stop());
+      }
+      mediaStream = null;
+      frameBuffer = [];
+      preroll = [];
+      utterFrames = [];
+      inSpeech = false;
+      loudCount = 0;
+      silentCount = 0;
+      recordStatus.textContent = "Idle";
+      syncRecordButton(false);
+      isRunning = false;
+    }
+
+    syncRecordButton(false);
+
+    if (recordBtn) {
+      recordBtn.addEventListener("click", async () => {
+        if (!isRunning) {
+          try {
+            await startDictation();
+          } catch (err) {
+            if (recordStatus) {
+              recordStatus.textContent = "Microphone permission denied.";
+            }
+          }
+        } else {
+          await stopDictation();
+        }
+      });
+    }
+
+    function showQuestion() {
+      if (!qaQuestion || !qaAnswer) return;
+      qaQuestion.textContent = qaQuestions[qaIndex] || "";
+      qaAnswer.value = qaAnswers[qaIndex] || "";
+      qaAnswer.focus();
+    }
+
+    async function readErrorText(response, fallbackMessage) {
+      try {
+        const text = (await response.text()).trim();
+        return text || fallbackMessage;
+      } catch (err) {
+        return fallbackMessage;
+      }
+    }
+
+    async function startQA() {
+      if (!qaStatus) return;
+      qaStatus.textContent = "Generating questions…";
+      const res = await fetch(`/qa/start/{{ file_id }}`, { method: "POST" });
+      if (!res.ok) {
+        qaStatus.textContent = await readErrorText(res, "Failed to start Q&A.");
+        return;
+      }
+      const data = await res.json();
+      qaSessionId = data.session_id;
+      qaQuestions = data.questions || [];
+      qaTargets = Array.isArray(data.targets) ? data.targets : [];
+      qaIndex = 0;
+      qaActive = true;
+      qaAnswers = new Array(qaQuestions.length).fill("");
+      if (qaPanel) qaPanel.classList.remove("hidden");
+      qaStatus.textContent = "Answer the questions.";
+      showQuestion();
+    }
+
+    async function saveAnswer() {
+      if (!qaSessionId || !qaAnswer) return;
+      const answer = qaAnswer.value || "";
+      qaAnswers[qaIndex] = answer;
+      await fetch(`/qa/answer/${qaSessionId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer, index: qaIndex }),
+      });
+    }
+
+    async function nextQuestion() {
+      await saveAnswer();
+      if (autoUpdateOnNext) {
+        await updateCurrentField();
+      }
+      qaIndex += 1;
+      if (qaIndex >= qaQuestions.length) {
+        if (qaStatus) qaStatus.textContent = "All questions answered.";
+        if (qaQuestion) qaQuestion.textContent = "Done. Review the document or download the filled PDF.";
+        return;
+      }
+      showQuestion();
+    }
+
+    async function prevQuestion() {
+      await saveAnswer();
+      qaIndex = Math.max(0, qaIndex - 1);
+      showQuestion();
+    }
+
+    async function updateCurrentField() {
+      if (!qaSessionId || !qaAnswer) return;
+      const target = qaTargets[qaIndex] || null;
+      const fieldMeta = target && target.name ? target : fieldSchema[qaIndex];
+      if (!fieldMeta) {
+        if (qaStatus) qaStatus.textContent = "No field for this question.";
+        return;
+      }
+      if (qaStatus) qaStatus.textContent = "Updating field…";
+      const res = await fetch("/qa/normalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: qaQuestions[qaIndex] || "",
+          answer: qaAnswer.value || "",
+        }),
+      });
+      if (!res.ok) {
+        if (qaStatus) {
+          qaStatus.textContent = await readErrorText(res, "Failed to update field.");
+        }
+        return;
+      }
+      const data = await res.json();
+      const value = data.value || "";
+      const boolVal = parseYesNo(value, qaAnswer.value || "");
+      if (target && target.type === "yesno") {
+        if (boolVal === null) {
+          if (qaStatus) qaStatus.textContent = "Please answer yes or no.";
+          return;
+        }
+        setCheckboxValue(target.yes, boolVal);
+        setCheckboxValue(target.no, !boolVal);
+        if (qaStatus) qaStatus.textContent = "Checkbox updated.";
+        return;
+      }
+      if (target && target.type === "checkbox") {
+        if (boolVal === null) {
+          if (qaStatus) qaStatus.textContent = "Please answer yes or no.";
+          return;
+        }
+        setCheckboxValue(target.name, boolVal);
+        if (qaStatus) qaStatus.textContent = "Checkbox updated.";
+        return;
+      }
+      if (isCheckboxFieldMeta(fieldMeta)) {
+        const group = checkboxGroups.get(fieldMeta.name);
+        if (!group) {
+          if (qaStatus) qaStatus.textContent = "Checkbox group not found.";
+          return;
+        }
+        if (boolVal === null) {
+          if (qaStatus) qaStatus.textContent = "Please answer yes or no.";
+          return;
+        }
+        setCheckboxValue(group.yes, boolVal);
+        setCheckboxValue(group.no, !boolVal);
+        if (qaStatus) qaStatus.textContent = "Checkbox updated.";
+        return;
+      }
+      const field = document.querySelector(`input[name="${fieldMeta.name}"]`);
+      if (field) {
+        field.value = value;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      if (qaStatus) qaStatus.textContent = "Field updated.";
+    }
+
+    async function finishQA() {
+      await saveAnswer();
+      if (!qaSessionId) return;
+      if (qaStatus) qaStatus.textContent = "Done. Review and download.";
+    }
+
+    if (qaStart) {
+      qaStart.addEventListener("click", async () => {
+        await startQA();
+      });
+    }
+    if (qaNext) {
+      qaNext.addEventListener("click", async () => {
+        await nextQuestion();
+      });
+    }
+    if (qaPrev) {
+      qaPrev.addEventListener("click", async () => {
+        await prevQuestion();
+      });
+    }
+    if (qaUpdate) {
+      qaUpdate.addEventListener("click", async () => {
+        await updateCurrentField();
+      });
+    }
+    if (qaFinish) {
+      qaFinish.addEventListener("click", async () => {
+        await finishQA();
+      });
+    }
+
+    function collectFieldValues() {
+      if (window.PDF_VIEWER_API && typeof window.PDF_VIEWER_API.getFieldValues === "function") {
+        return window.PDF_VIEWER_API.getFieldValues();
+      }
+      const values = {};
+      document.querySelectorAll(".viewer-input").forEach((input) => {
+        if (!input.name) return;
+        if (input.type === "checkbox") {
+          if (input.checked) values[input.name] = "Yes";
+          return;
+        }
+        if (input.value) values[input.name] = input.value;
+      });
+      return values;
+    }
+
+    function submitFilledPdf() {
+      const values = collectFieldValues();
+      const form = document.createElement("form");
+      form.method = "post";
+      form.action = `/fill/${fileId}`;
+      Object.entries(values).forEach(([name, value]) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+    }
+
+    if (downloadBtn) {
+      downloadBtn.addEventListener("click", submitFilledPdf);
+    }
+
+    if (autoUpdateToggle) {
+      autoUpdateToggle.addEventListener("change", (event) => {
+        autoUpdateOnNext = event.target.checked;
+      });
+    }
+
+    /* ============================================================
+     *  CONVERSATION MODE — fully automated voice Q&A loop
+     * ============================================================ */
+    const convoStartBtn = document.getElementById("convo-start");
+    const convoStatusEl = document.getElementById("convo-status");
+    const convoProgressEl = document.getElementById("convo-progress");
+
+    let convoActive = false;
+    // States: IDLE | GENERATING | SPEAKING | LISTENING | PROCESSING | DONE
+    let convoState = 'IDLE';
+
+    function setConvoStatus(text, state) {
+      if (convoStatusEl) {
+        convoStatusEl.textContent = text;
+        convoStatusEl.className = 'convo-status';
+        if (state) convoStatusEl.classList.add('convo-' + state);
+      }
+    }
+
+    function updateConvoProgress() {
+      if (!convoProgressEl) return;
+      if (!convoActive || qaQuestions.length === 0) {
+        convoProgressEl.classList.add('hidden');
+        return;
+      }
+      convoProgressEl.classList.remove('hidden');
+      const current = Math.min(qaIndex + 1, qaQuestions.length);
+      convoProgressEl.textContent = `Question ${current} of ${qaQuestions.length}`;
+    }
+
+    function speakText(text) {
+      return new Promise((resolve, reject) => {
+        if (!('speechSynthesis' in window)) {
+          reject(new Error('Speech synthesis not supported'));
+          return;
+        }
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.onstart = () => {
+          startSpeechVisualizer();
+          bumpSpeechVisualizer(0.22);
+        };
+        utterance.onboundary = (event) => {
+          if (event && event.name === 'word') {
+            bumpSpeechVisualizer(0.4);
+          } else {
+            bumpSpeechVisualizer(0.26);
+          }
+        };
+        utterance.onend = () => {
+          stopSpeechVisualizer();
+          resolve();
+        };
+        utterance.onerror = (e) => {
+          stopSpeechVisualizer();
+          if (e.error === 'canceled' || e.error === 'interrupted') {
+            resolve();
+          } else {
+            reject(e);
+          }
+        };
+        window.speechSynthesis.speak(utterance);
+      });
+    }
+
+    async function speakQuestion(index) {
+      if (!convoActive) return;
+      if (index >= qaQuestions.length) {
+        await convoFinish();
+        return;
+      }
+      qaIndex = index;
+      showQuestion();
+      updateConvoProgress();
+
+      // Stop microphone BEFORE speaking so it doesn't capture TTS audio
+      if (isRunning) {
+        await stopDictation();
+      }
+
+      convoState = 'SPEAKING';
+      setConvoStatus('Speaking question…', 'speaking');
+
+      try {
+        await speakText(qaQuestions[index]);
+      } catch (err) {
+        setConvoStatus('TTS failed: ' + (err.message || err), 'error');
+        await endConversation();
+        return;
+      }
+
+      if (!convoActive) return; // user may have stopped during TTS
+
+      // Transition to LISTENING — start microphone only AFTER TTS finishes
+      convoState = 'LISTENING';
+      setConvoStatus('Listening for your answer…', 'listening');
+
+      if (!isRunning) {
+        try {
+          await startDictation();
+        } catch (err) {
+          setConvoStatus('Microphone permission denied.', 'error');
+          await endConversation();
+          return;
+        }
+      }
+    }
+
+    async function onConvoUtterance(rawText) {
+      if (!convoActive) return;
+
+      convoState = 'PROCESSING';
+      setConvoStatus('Processing answer…', 'processing');
+
+      // Put the transcribed text in the answer box
+      if (qaAnswer) {
+        qaAnswer.value = rawText;
+      }
+      qaAnswers[qaIndex] = rawText;
+
+      // Save and update field using existing infrastructure
+      await saveAnswer();
+      await updateCurrentField();
+
+      if (!convoActive) return;
+
+      // Move to next question
+      const nextIdx = qaIndex + 1;
+      if (nextIdx >= qaQuestions.length) {
+        await convoFinish();
+      } else {
+        await speakQuestion(nextIdx);
+      }
+    }
+
+    async function startConversation() {
+      if (!('speechSynthesis' in window)) {
+        setConvoStatus('Your browser does not support speech synthesis.', 'error');
+        return;
+      }
+
+      convoActive = true;
+      convoState = 'GENERATING';
+      setConvoStatus('Generating questions…', 'processing');
+      if (convoStartBtn) {
+        convoStartBtn.textContent = 'End Conversation';
+        convoStartBtn.classList.add('convo-btn-active');
+      }
+
+      // Reuse the existing startQA flow
+      if (!qaSessionId) {
+        await startQA();
+      }
+
+      if (!qaQuestions.length) {
+        setConvoStatus('No questions were generated.', 'error');
+        await endConversation();
+        return;
+      }
+
+      // Start the conversation loop from question 0
+      await speakQuestion(0);
+    }
+
+    async function endConversation() {
+      convoActive = false;
+      convoState = 'IDLE';
+
+      // Stop TTS
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      stopSpeechVisualizer();
+
+      // Stop microphone
+      if (isRunning) {
+        await stopDictation();
+      }
+
+      if (convoStartBtn) {
+        convoStartBtn.textContent = 'Start Conversation';
+        convoStartBtn.classList.remove('convo-btn-active');
+      }
+      if (convoProgressEl) convoProgressEl.classList.add('hidden');
+      setConvoStatus('Conversation ended.', '');
+    }
+
+    async function convoFinish() {
+      convoState = 'DONE';
+      setConvoStatus('All questions answered! Review and download your PDF.', 'done');
+
+      // Stop microphone
+      if (isRunning) {
+        await stopDictation();
+      }
+      stopSpeechVisualizer();
+
+      try {
+        await speakText('All questions have been answered. You can now review and download your filled PDF.');
+      } catch (e) {
+        // Ignore TTS failure on completion message
+      }
+
+      convoActive = false;
+      if (convoStartBtn) {
+        convoStartBtn.textContent = 'Start Conversation';
+        convoStartBtn.classList.remove('convo-btn-active');
+      }
+      if (convoProgressEl) convoProgressEl.classList.add('hidden');
+    }
+
+    if (convoStartBtn) {
+      convoStartBtn.addEventListener('click', async () => {
+        if (!convoActive) {
+          await startConversation();
+        } else {
+          await endConversation();
+        }
+      });
+    }
+  </script>
+  <script>
+    window.PDF_VIEWER_CONFIG = { fileId: "{{ file_id }}", mode: "fill" };
+    window.PDF_VIEWER_API = window.PDF_VIEWER_API || {};
+    window.PDF_VIEWER_API.onFieldsUpdate = (data) => {
+      if (data) {
+        updateFieldUI(data);
+      }
+    };
+    window.PDF_VIEWER_API.onInputsRendered = () => {
+      refreshInputList();
+    };
+  </script>
+  <script src="/static/pdf_viewer.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pypdf
+python-multipart
+jinja2
+faster-whisper
+numpy
+requests
+Pillow
+pytesseract
+pdf2image
+google-cloud-documentai
+opencv-python

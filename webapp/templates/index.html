@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Form Filler</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body class="landing-body">
+    <main class="landing-shell">
+      <section class="landing-panel intro-panel">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="eyebrow">Cognitive Form Assistant</div>
+        <h1>Fill PDFs with voice, guided questions, and a live document workspace.</h1>
+        <p class="landing-copy">
+          Upload a PDF or image, let the server place fields, then review and complete the form in a split assistant and document UI.
+        </p>
+        <div class="landing-feature-list">
+          <div class="landing-feature">Guided Q&amp;A that writes directly into fields</div>
+          <div class="landing-feature">Continuous dictation and conversation mode</div>
+          <div class="landing-feature">Live PDF editing, field tools, and instant download</div>
+        </div>
+      </section>
+
+      <section class="card upload-card">
+        <div class="card-header">
+          <h2>Start a Session</h2>
+          <p>Choose a PDF or image to generate the working document.</p>
+        </div>
+        <form
+          id="upload-form"
+          class="upload-form"
+          action="/upload"
+          method="post"
+          enctype="multipart/form-data"
+        >
+          <label class="file-label">
+            <span class="file-label-title">Select a PDF or JPG</span>
+            <span class="file-label-copy">The document will be converted into an editable workspace.</span>
+            <input type="file" name="pdf" accept="application/pdf,image/jpeg,image/png" required />
+          </label>
+          <input type="hidden" name="field_source" value="commonforms" />
+          <button type="submit" class="primary-button">Upload and Prepare</button>
+        </form>
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+      </section>
+    </main>
+
+    <div id="loader" class="loader hidden" aria-live="polite" aria-busy="true">
+      <div class="loader-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loader-text">Adding form fields to your PDF…</div>
+        <div class="progress-track">
+          <div class="progress-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById("upload-form");
+      const loader = document.getElementById("loader");
+
+      form.addEventListener("submit", () => {
+        loader.classList.remove("hidden");
+      });
+    </script>
+  </body>
+</html>
