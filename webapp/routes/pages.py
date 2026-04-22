@@ -30,7 +30,7 @@ def index(request: Request, manual: int | None = None) -> Response:
         launch_path = startup_launch_path(_paths(request), _integrations(request))
         if launch_path:
             return RedirectResponse(url=launch_path, status_code=302)
-    return _templates(request).TemplateResponse("index.html", {"request": request})
+    return _templates(request).TemplateResponse(request, "index.html")
 
 
 @router.post("/upload", response_class=HTMLResponse)
@@ -50,28 +50,32 @@ async def upload(
         )
     except BadInputError as exc:
         return _templates(request).TemplateResponse(
+            request,
             "index.html",
-            {"request": request, "error": str(exc)},
+            {"error": str(exc)},
             status_code=400,
         )
     except ExternalServiceError as exc:
         return _templates(request).TemplateResponse(
+            request,
             "index.html",
-            {"request": request, "error": str(exc)},
+            {"error": str(exc)},
             status_code=500,
         )
 
     return _templates(request).TemplateResponse(
+        request,
         "loading.html",
-        {"request": request, "file_id": file_id},
+        {"file_id": file_id},
     )
 
 
 @router.get("/loading/{file_id}", response_class=HTMLResponse)
 def loading_page(request: Request, file_id: str) -> HTMLResponse:
     return _templates(request).TemplateResponse(
+        request,
         "loading.html",
-        {"request": request, "file_id": file_id},
+        {"file_id": file_id},
     )
 
 
@@ -85,7 +89,6 @@ def fill_page(request: Request, file_id: str) -> HTMLResponse:
     context = read_fill_page_context(_integrations(request), pdf_path)
     context.update(
         {
-            "request": request,
             "file_id": file_id,
             "transcribe_available": _integrations(request).transcribe_available,
             "qa_available": _integrations(request).llm_available,
@@ -93,4 +96,4 @@ def fill_page(request: Request, file_id: str) -> HTMLResponse:
             "startup_form": read_startup_form_status(_paths(request), current_file_id=file_id),
         }
     )
-    return _templates(request).TemplateResponse("fill.html", context)
+    return _templates(request).TemplateResponse(request, "fill.html", context)
