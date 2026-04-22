@@ -9,13 +9,6 @@ What is included:
 - a root `requirements.txt`
 - an `env.example.sh` template for optional integrations
 
-What is intentionally excluded:
-
-- local sample PDFs and generated images
-- runtime data under `webapp/data/`
-- secret export files and credentials
-- old `webapp1/` and `release/` copies
-
 Run locally:
 
 ```bash
